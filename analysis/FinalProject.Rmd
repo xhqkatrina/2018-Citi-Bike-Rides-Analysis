@@ -1,0 +1,553 @@
+---
+title: "Citi Bike Analysis"
+author: "Qingyu Zhang  Haiqing Xu"
+date: "4/24/2019"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+```{r, include = FALSE, message = FALSE}
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(scales)
+library(knitr)
+library(lubridate)
+library(ggthemes)
+library(reshape2)
+library(gtable)
+library(scales)
+library(tidyverse)
+library(grid)
+```
+
+[Link to Github Repo](https://github.com/xhqkatrina/5293_Final_Project)
+
+#I. Introduction
+
+Like all the sharing systems we know, Airbnb, Uber etc., the Citi Bike is also a sharing system which is the network of bicycle rental stations intended for point-to-point transportation. The Citi Bike is also  the largest bike sharing system in NYC, with 12000 bikes and 750 stations across Manhattan, Brooklyn and Queens. It's a fast, healthy, sustainable and highly popular way to get around NYC. 
+
+People can rent bikes at various docking stations throughout the city and return them to another docking station. There are two main forms of payment: The first one is "pay as you go" means you pay for per ride. The second one is "Annual Subscription" means you pay a flat fee for the year with unlimited rides and higher cap on the ride. There is also a time limit on how long the bike can be in use per ride; 30 minutes for non-subscribers and 45 minutes for subscribers. Financial penalties are applied in the cases the ride exceed these limits.
+
+In our project, we will mainly focus on two parts about Citi Bike Dataset. For the first part, we will focus on the general analysis about this dataset, including the analysis of Age, Gender, Usertype, the most popular routes or stations etc. In addition to analysis about the data, we will come up some recommendations based on the findings which we explore from the plots. For the second part, we will focus on and interactive visualization. Our shiny app shows more details about some of the questions we analyzed on the first part, displaying more geographical information and providing new insights.
+
+#II. Description of the data source
+
+We downloaded the data from Citi Bike's official website: https://www.citibikenyc.com/system-data
+
+We will use the data from January 2018 to December 2018, and there are 17548339 records in total. 
+
+From the raw data, there are 15 variables : 
+
+Trip Duration (seconds) : Length of ride in seconds
+
+Start Time and Date : Date and Time of starting of the ride
+
+Stop Time and Date : Date and Time of ending of the ride
+
+Start Station Name : Station name of starting ride
+
+End Station Name : Station name of ending ride
+
+Start Station ID : Station ID of starting ride
+
+End Station ID : Station ID of ending ride
+
+Start Station Latitude : Latitude of starting station
+
+Start Station Longitude : Longitude of starting station
+
+End Station Latitude : Latitude of ending station
+
+End Station Longitude : Longitude of ending station
+
+Bike ID
+
+User Type (Customer = 24-hour pass or 3-day pass user; Subscriber = Annual Member)
+
+Gender (Zero=unknown; 1=male; 2=female)
+
+Year of Birth
+```{r, cache = TRUE, eval = FALSE}
+# import data
+CitiBike<- data.frame()
+ListFiles <- paste("2018", c("01","02","03", "04", "05", "06", "07", "08","09","10","11","12"), ".csv", sep = "")
+for(file in ListFiles) {
+  CitiBike <- rbind(CitiBike, read.csv(file, header = T, stringsAsFactors = F))
+}
+```
+
+```{r, eval = FALSE}
+# select columns that we use
+CitiBike <- CitiBike[,-c(4,6,7,8,10,11,12)]
+saveRDS(CitiBike, "trip.rds")
+```
+
+```{r}
+# load data from rds file
+CitiBike <- readRDS("trip.rds")
+```
+
+#III. Description of data import / cleaning / transformation
+
+Firstly, we did the data cleaning in R. But we found there are no missing values in our dataset.
+```{r}
+# check missing values
+CitiBike[!complete.cases(CitiBike),]
+```
+
+Then, we did some data transformations. 
+
+1.Create two new variables in our dataset, "StartDate" and "StartTime", extracting the exact date and time from "Start Time and Date" variable.
+```{r}
+# date and time extract
+CitiBike$StartDate <- as.Date(factor(CitiBike$starttime),format="%Y-%m-%d")
+CitiBike$StartTime <- as.POSIXct(strptime(CitiBike$starttime, "%Y-%m-%d %H:%M:%S"))
+CitiBike$StartTime <- strftime(CitiBike$StartTime, format ="%H:%M:%S")
+```
+
+2.Create a new variable "wday" which stores the Weekdays for the start date.
+
+3.Create another new variable named "Minutes", which converts the trip duration time from seconds to minutes.
+
+4.Create an "Age" variable, equal to 2018 minus "birth.year".
+```{r}
+#Weekdays and Weekend for Start Date
+CitiBike$wday <- wday(CitiBike$StartDate, label = TRUE, abbr = FALSE)
+
+#Trip Minutes
+CitiBike$Minutes <- CitiBike$tripduration/60
+
+#Age
+CitiBike$Age <- 2018 - CitiBike$birth.year
+```
+
+5.Convert the "gender" variable from numbers to name. (0=Unknown; 1=Male; 2=Female)
+```{r}
+# convert gender
+CitiBike$gender <- ifelse(CitiBike$gender==1,"Male",ifelse(CitiBike$gender==2,"Female","Unknown"))
+```
+
+6.Create "Month" variable from StartDate.
+```{r}
+# get month
+CitiBike$Month <- as.numeric(substr(CitiBike$starttime,6,7))
+```
+
+Then, we check for outliers (values that might not be reasonable).
+
+1. Drop the extreme values for Trip Duration Time (Minutes) 
+
+We define a function F(t) which helps us calculate the quantile of duration time. From this function, we can calculate the result that 99.9% of duration time is within 265 minutes. So we remove all the records with more than 265 minutes in duration time. In this step, we remove 17485 records in total.
+```{r, eval = FALSE}
+# check quantiles
+Ft<-ecdf(CitiBike[order(CitiBike$Minutes),12])
+q=quantile(Ft,c(0.85,0.95,0.99,0.999))
+```
+
+2. Drop the outliers for age
+
+After calculating the riders' age from their birth year, we found there are some outliers. So we remove all the records with more than 100 years old. In this step, we remove 11141 records in total.
+```{r}
+# remove outliers in minutes and age
+CitiBike<-CitiBike[CitiBike$Minutes<=265,]
+CitiBike <- CitiBike[CitiBike$Age<=100,] 
+```
+
+#IV. Analysis of missing values
+
+Our dataset has no missing values. Because the data has been pre-cleaned before uploading. From Citi Bike's introduction to dataset on their official website, they have already removed trips that are taken by staff as they service and inspect the system, trips that are taken to/from any of their "test" stations (which they were using more in June and July 2013), and any trips that were below 60 seconds in length (potentially false starts or users trying to re-dock a bike to ensure it's secure).
+
+#V. Results
+
+The following are some exploratory data analysis that we have explored.
+
+###How many trips on each day throughout the year?
+```{r}
+UsagePerDay <- CitiBike %>%
+                group_by(StartDate) %>%
+                tally()
+
+ggplot(data=UsagePerDay, aes(x=StartDate, y=n)) +
+  geom_area(fill="lightblue",color="blue") +
+  ylab("Number of trips") +
+  xlab("2018") +
+  ggtitle("NYC Daily Citi Bike Trips") +
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+The plot shows a general trend of increasing number of trips from Winter to Summer, and decreasing number of trips from Summer to Winter. And we can also observe there are sharp decrease daily trip counts, corresponding to weekends and holidays. As there are more trips around summer, starting from May to Oct, we would recommend distribute more bikes during this period. After seeing the general trend for daily trips, we shall have a look at the monthly plot throughout the year.
+
+###How many trips on each Month throughout the year?
+```{r}
+UsagePerMonth<-CitiBike %>%
+                  group_by(Month) %>%
+                  tally()
+ggplot(data=UsagePerMonth, aes(x=Month, y=n, group = 1, label=n)) +
+  ylim(500000,2100000)+
+  geom_point() +
+  geom_line() +
+  geom_text(vjust=-1)+
+  ylab("Number of trips") +
+  xlab("") +
+  ggtitle("NYC Monthly Citi Bike Trips") +
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+For the monthly plot, we use the line chart to represent the trend of total trips for each month. Not surprisingly, there are dramatically fewer trips during the cold winter and more trips during the hot summer, which has the same trend with daily plot. In August, the usage reaches its peak, the number of trips in August is 1974296. Actually from May to October, the usage almost are the same, but there is a huge decrease from October to November and a dramatic increase from April to May. As we mentioned before, because there are more trips starting from May to Oct, we would recommend distributing more bikes during this period.
+
+###Distribution of trip duration
+```{r}
+ggplot(data = CitiBike, aes(x=Minutes)) +
+  geom_bar(fill="steelblue") +
+  xlim(0,60) +
+  ylab("Number of trips") +
+  ggtitle("Distribution of Trip Duration") +
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+This plot tells us that for those who finished trip in 60 minutes, most of them finished their trip very quickly, in the range of from 2 to 20 minutes. We guess most of them are one-time customers and just trying to take a ride to have fun. Maybe they're easier to get bored and tired, then finish the trip very soon. Based on this, we would recommend to increase the price for the first 20 minutes and lower the price after 20 minutes.
+
+###How many trips on average in each hour
+```{r, eval = FALSE}
+CitiBike$Hour <- as.POSIXct(strptime(CitiBike$starttime, "%Y-%m-%d %H:%M:%S"))
+CitiBike$Hour <- strftime(CitiBike$Hour, format ="%H")
+
+Weekday <- CitiBike %>%
+             filter(wday %in% c("Monday","Tuesday","Wednesday","Thursday","Friday"))
+Weekend <- CitiBike %>%
+             filter(wday %in% c("Saturday","Sunday"))
+
+AvgTripsWeekday <- Weekday %>%
+                    group_by(Hour) %>%
+                    tally()
+AvgTripsWeekend <- Weekend %>%
+                    group_by(Hour) %>%
+                    tally()
+
+gw<-ggplot(data=AvgTripsWeekday,aes(x=Hour,y=(n/52/5)))+
+     geom_bar(stat="identity",fill="lightblue")+
+     xlab("Hour") +
+     ylab("Average Daily Trips")+
+     ggtitle("Average Daily Trips on Weekdays for Each Hour") +
+     theme(plot.title = element_text(hjust=0.5))
+    
+gwe<-ggplot(data=AvgTripsWeekend,aes(x=Hour,y=(n/52/2)))+
+     geom_bar(stat="identity",fill="lightblue")+
+     ylim(0,4600) +
+     xlab("Hour")+
+     ylab("Average Daily Trips") +
+     ggtitle("Average Daily Trips on Weekends for Each Hour") +
+     theme(plot.title = element_text(hjust=0.5))
+
+grid.newpage()
+grid.draw(rbind(ggplotGrob(gw), ggplotGrob(gwe), size = "last"))
+
+```
+
+<img src="10.PNG"/> 
+
+(Image inserted due to knit memory issue.)
+
+From the plot, obviously, users spend more hours on weekdays and less hour on weekends. And within group of weekdays and weekends, we could see some difference of distribution. For weekday and weekend, most of their users lies within in the range of 6:00am to 21:00 pm. However, on weekday, the peak is around 7:00 am to 9:00 am and 17:00 pm to 19:00 pm, which is fair as we think most of them would take the bike to work or back from work. On weekend, most users don't have to work and get up late, the peak thus become around 10:00 am to 20:00 pm. Based on this, we recommend build a concrete plan to deal with the problem of distribution of bikes by time within a day to avoid the case of no bike for a user in the peak time. 
+
+###Gender distribution of users
+```{r, eval = FALSE}
+gender <- CitiBike %>%
+            group_by(gender) %>%
+            tally()
+pie<-ggplot(gender, aes(x="",y=n, fill=gender))+
+      geom_bar(width=1,stat="identity")+
+      coord_polar("y",start=0)+
+      scale_fill_brewer(palette="Blues")
+blank_theme<-theme_minimal()+
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.border = element_blank(),
+    panel.grid = element_blank(),
+    axis.ticks = element_blank(),
+    plot.title = element_text(size=14,face="bold")
+  )
+pie + blank_theme +
+  theme(axis.text.x = element_blank()) +
+  geom_text(aes(label=paste0(round(n/sum(n),1)*100,"%")),position=position_stack(vjust=0.5)) +
+  ggtitle("Distribution of Gender") +
+  theme(plot.title=element_text(hjust=0.5))
+  
+```
+
+<img src="1.PNG" height="500px" width="600px"/> (Image inserted due to knit memory issue.)
+
+It seems like most of the users are male and almost 10% of the users did not present their gender, which we will explain later why they don't.
+
+###Age Distribution of users
+```{r, eval = FALSE}
+year <- CitiBike %>%
+         group_by(birth.year) %>%
+         tally()
+ggplot(year,aes(x=birth.year,y=n)) +
+  geom_bar(stat="identity",fill="blue",alpha=0.5) +
+  xlab("") +
+  ylab("Number of Trips") +
+  ggtitle("Distribution of Birth Year") +
+  theme(plot.title=element_text(hjust=0.5))+
+  scale_y_continuous(labels=comma)
+```
+
+<img src="2.PNG" height="600px" width="800px"/> 
+
+(Image inserted due to knit memory issue.)
+
+This graph presents us a distribution of birth year of users. The distribution is left skewed and there is a weird bar, because there are too many 1969 born users. So what's the reason for that? We will figure it out then.
+
+```{r, eval = FALSE}
+CitiBike$age.group <- cut(CitiBike$Age, breaks=c(0,10,20,30,40,50,60,70,80,100),labels=c("Under 10","10s","20s","30s","40s","50s","60s","70s","Over 80"))
+ggplot(data=CitiBike, aes(x=age.group)) +
+  geom_bar(fill="blue",alpha=0.5) +
+  scale_y_continuous(labels=comma) +
+  geom_text(stat="count",aes(label=..count..),vjust=-0.5)+
+  xlab("")+
+  ylab("Number of Trips") +
+  ggtitle("Distribution of Age")+
+  theme(plot.title=element_text(hjust=0.5))
+```
+
+<img src="3.PNG" height="600px" width="800px"/> 
+
+(Image inserted due to knit memory issue.)
+
+Now, let's see the plot of distribution of age for 8 different groups. We split the age to 8 groups. This group tells us that most of the users lies within 20s to 50s. We would recommend advertise to other potential users lies in this range and attract more. Also, based on the above two plots (Distribution of birth year and Distribution of age), we could see that although there are more than 1.6 million 1969 born users, the number of users in age 50s is just around 2.17 million.
+
+###Customers vs Subscribers and the relationship with gender type
+```{r, eval = FALSE}
+Usage <- CitiBike %>%
+          group_by(usertype,Month) %>%
+          tally()
+
+ggplot(data=Usage, aes(x=Month, y=n)) +
+  geom_bar(stat="identity", aes(fill=usertype)) +
+  coord_flip() +
+  scale_fill_brewer(palette="Pastel1") +
+  xlab("") +
+  ylab("") +
+  ggtitle("Monthly Citi Bike Trips for Different Usertype")+
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+<img src="4.PNG" height="600px" width="800px"/> 
+
+(Image inserted due to knit memory issue.)
+
+This plot tells us that a very large portion of users(no matter in which month) are subscriber instead of customer. As the subscriber is annual member, which means most of them are nearby residents around. Based on that, we would recommend add some promotions to vistors to stimulate the increasing of customers-user. 
+
+```{r, eval = FALSE}
+ggplot(CitiBike, aes(x=usertype))+
+  geom_bar(aes(fill=gender)) + 
+  scale_fill_brewer(palette="Blues")+
+  scale_y_continuous(labels=comma) +
+  xlab("")+
+  ylab("Number of Trips")+
+  ggtitle("Distribution of Usertype with Gender") +
+  theme(plot.title=element_text(hjust=0.5))
+```
+
+<img src="5.PNG" height="600px" width="800px"/> 
+
+(Image inserted due to knit memory issue.)
+
+This graph tells us that within customer category, most of users' gender are unknown, which is fair as most customer are not willing to present their gender just to take a ride. The distribution of female and male within each type of user are consistant with over female and male. 
+
+```{r, eval = FALSE}
+customers <- CitiBike[CitiBike$usertype=="Customer",]
+customers$Year <- ifelse(customers$birth.year=="1969","1969","Others")
+cus.year<- customers %>%
+            group_by(Year) %>%
+            tally()
+pie.year <- ggplot(cus.year, aes(x="",y=n, fill=Year))+
+      geom_bar(width=1,stat="identity")+
+      coord_polar("y",start=0)+
+      scale_fill_brewer(palette="Blues")
+blank_theme<-theme_minimal()+
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.border = element_blank(),
+    panel.grid = element_blank(),
+    axis.ticks = element_blank(),
+    plot.title = element_text(size=14,face="bold")
+  )
+pie.year + blank_theme +
+  theme(axis.text.x = element_blank()) +
+  geom_text(aes(label=n),position=position_stack(vjust=0.5)) +
+  ggtitle("Distribution of Birth Year for Customers") +
+  theme(plot.title=element_text(hjust=0.5))
+```
+
+<img src="6.PNG" height="500px" width="600px"/> 
+
+(Image inserted due to knit memory issue.)
+
+Now, let's talk about the 1969-born users. This graph tells us that around 60% of customers are 1969-born, which is too much again. Based on this and previous three graphs, we conclude the reason might be: system treat those customers who did not present their year of birth as 1969-born. We recommend to adjust the system to add a new value such as "unknown" to take place 1969 in year-born variable, in order to avoid the confusion.  
+
+###What's the most popular routes?
+```{r,warning=FALSE, eval = FALSE}
+CitiBike$Route <- paste(CitiBike$start.station.name, CitiBike$end.station.name, sep=" -> ")
+Routes <- CitiBike %>%
+            group_by(Route) %>%
+            summarize(count=n()) %>%
+            arrange(desc(count)) %>%
+            top_n(n=20)
+
+Routes$Route <- as.character(Routes$Route)
+Routes$Route <- factor(Routes$Route, levels=unique(Routes$Route))
+
+ggplot(Routes, aes(y=reorder(Route,count),x=count)) +
+  geom_point(stat="identity") +
+  geom_text(aes(label=count),hjust=-0.5)+
+  xlim(3800,8600)+
+  xlab("") +
+  ylab("") +
+  ggtitle("Top 20 Popular Routes")+
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+<img src="7.PNG" height="600px" width="800px"/> 
+
+(Image inserted due to knit memory issue.)
+
+###What's the most populart stations?
+```{r,warning=FALSE, eval = FALSE}
+Start <- CitiBike %>%
+          group_by(start.station.name) %>%
+          summarize(count=n()) %>%
+          arrange(desc(count)) %>%
+          top_n(n=20)
+Start$start.station.name <- as.character(Start$start.station.name)
+Start$start.station.name <- factor(Start$start.station.name, levels=unique(Start$start.station.name))
+
+ggplot(Start, aes(y=reorder(start.station.name,count),x=count)) +
+   geom_point(stat="identity") +
+   xlab("") +
+   ylab("") +
+   ggtitle("Top 20 Most Popular Stations")+
+   theme(plot.title = element_text(hjust=0.5))
+```
+
+<img src="8.PNG" height="600px" width="800px"/> 
+
+(Image inserted due to knit memory issue.)
+
+The above plots clearly tell us some routes such center park s & 6 ave to center park s & 6 are very popular and the most popular start station is: Pershing Square North. Based on these popular routes, we recommend to redistribute the amount of bikes in these stations to avoid the case like no bike to ride or too many bike left. We could not recommend to use trucks to upload bikes from other unpopular stations and transfer them to these popular ones, because this is a kind of time-consuming and not efficient way. Maybe lead users to return bikes to these popular stations and provide with some bonus for them is a good idea.  
+
+###Weather impact
+```{r, eval = FALSE}
+Temp <- read.csv("temp.csv", header = T)
+Prec <- read.csv("Pre.csv", header = T)
+
+Temp$Month <- as.character(Temp$Month)
+Temp$Month <- factor(Temp$Month, levels=unique(Temp$Month))
+
+Prec$Month <- as.character(Prec$Month)
+Prec$Month <- factor(Prec$Month, levels=unique(Prec$Month))
+
+avg_duration <- CitiBike %>%
+                 group_by(Month) %>%
+                 summarize(Mean = mean(tripduration))
+
+g1<-ggplot(data=Temp,aes(x=Month, y=Temperature)) +
+  geom_bar(stat="identity",fill="lightblue") +
+  geom_text(aes(label=Temperature))+
+  scale_y_continuous(position="right") +
+  xlab("") +
+  ylab("Temperature")+
+  theme(axis.text = element_text(size=6))+
+  theme(axis.title.y = element_text(size=9))
+
+g2<-ggplot(data=avg_duration, aes(x=Month, y=Mean, group=1)) +
+  geom_point() +
+  geom_line(linetype="dashed") +
+  xlab("")+
+  ylab("Avg Trip Duration (Seconds)")+
+  theme(axis.title.y = element_text(size=7))
+
+g3<-ggplot(data=Prec, aes(x=Month, y=Precipitaiton)) +
+  geom_bar(stat="identity",fill="lightblue") +
+  geom_text(aes(label=Precipitaiton))+
+  scale_y_continuous(position="right")+
+  xlab("")+
+  theme(axis.text = element_text(size=6))+
+  theme(axis.title.y = element_text(size=9))
+
+grid.newpage()
+grid.draw(rbind(ggplotGrob(g1), ggplotGrob(g2),ggplotGrob(g3), size = "last"))
+```
+
+<img src="9.PNG"/> 
+
+(Image inserted due to knit memory issue.)
+
+The above plot tells us users prefer to ride the bike longer in higher temperature such as the month from May to Oct. This is consistant to the number of trips per month, which is also at its peak from May to Oct, which means not only users take more trips, but also they take longer trips. As summer is hot, if users cycle too long, they might need more water, provides with some vending machines around those popular stations from May to Oct is a good idea. 
+The average precipitation of a month has no obvious relation with the avergae duration of trip, however, if by both of them are measured by day, there might be some relation.
+
+#VI. Interactive Component
+
+[Link to Shiny App](https://xhqkatrina.shinyapps.io/5293_final_project/)
+
+The interactive component allows users to visualize citi bike trip records on the map of New York City. The app presents information related to some of our previous analysis: how many trips there are in each hour, what the most popular stations/routes are etc. Since the dataset includes geographical information, users can get a better view through observing the map. In addition, we give users the option to view hourly map, which allows them to see the dynamic change throughout the day.
+
+There are some interesting findings from the shiny app.
+
+**Popular Routes on Mondays(Left) vs. Popular routes on Saturdays(Right)**
+
+<img src="sc_Monday.PNG" height="300px" width="200px"/> <img src="sc_Saturday.PNG" height="300px" width="200px"/>
+
+The circles on the map represent stations and they reflect how busy a station is. Stations with a lot of trips are marked with larger circle and darker color. The blue lines represent popular biking routes.
+
+We can see clearly that people use citibike more on Mondays(weekday) compared to Saturdays(weekend), which further confirms our previous finding. In addition, there is a new finding: on Saturdays, people tend to travel to further areas, such as upper Manhattan and Brooklyn while on Mondays, people mostly travel within midtown and downtown Mahattan areas.
+
+**How many people are using citi bike from 12-1 pm(left) vs. from 6-7 pm(right) on Tuesdays**
+
+<img src="sc_12pm.PNG" height="300px" width="200px"/> <img src="sc_6pm.PNG" height="300px" width="200px"/>
+
+Again, it confirms our previous finding: during weekdays, people use citi bikes more often during rush hours compared with non-rush hours.
+
+**Potential Rebalancing Problem**
+
+For each station, we have generated a rebalance plot. This plot shows the bike inflow(number of bikes end at a particular station) and bike outflow (number of bikes start at a partcicular station) in each hour throughout the day. The blue dotted line represents the cumulative inflow minus the cumulative outflow in each hour. At some stations, the system cannot reach a balance.
+
+<img src="sc_plot.PNG" height="300px" width="400px"/>
+
+For example, for station "8 Ave & W 33 St" on Tuesdays, there is more cumulative outflow compared with cumulative inflow from 4:00 to 15:00. In this case, we may need to manually adjust the number of bikes available at this station.
+
+#VII. Conclusions
+
+**In this exploratory data analysis project, we have the following findings:**
+
+1) There are more trips around summer, starting from May to October.
+
+2) Most people use citi bike for short-distance ride, ranging from 2 to 20 minutes.
+
+3) People use citi bike more frequently on weekdays compared with weekends. On weekdays, the peak hour of bike usage is from 7-9 am and 5-7 pm (rush hours). On weekends, usage is concentrated in the afternoon.
+
+4) Among all users, around 90% are subscriber and rest 10% are customers. Among customers, more than 60% of the trips are from people born in 1969 with gender to be 'unknown'. These information could be problematic because this is the default setting when you fill out customer information. For subscribers, the birth year and gender information seem reasonable.
+
+5) Monthly temperature is correlated with monthly average trip duration. The higher the temperature is, the longer average trip duration is. There is no clear relationship between precipitation and average trip duration.
+
+6) From the interactive component, it seems people travel further to upper Manhattan areas and Brooklyn on weekends compared to weekdays.
+
+7) There are rebalancing problems at some docks. There is more cumulative outflow compared with cumulative inflow during some periods. In this case, we may need to manually adjust the number of bikes available at this station.
+
+**Limitation and future directions:**
+
+1) The relationship between bike usage and weather could be further explored. We have studied this question on a monthly level. A possible question to further ask is: what is the relationship of daily weather status(precipitation) and daily bike usage?
+
+2) In this project, the data we use is trip records dataset from 2018. There is another option to use real time data provided by Citibike to visualize real time bike usage data.
+
+3) We have found out the rebalancing issue in the citi bike system, and further analysis could be done to study how to best solve this issue.
