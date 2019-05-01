@@ -1,6 +1,6 @@
 ---
 title: "Citi Bike Analysis"
-author: "Qingyu Zhang  Haiqing Xu"
+author: "Qingyu Zhang;Haiqing Xu"
 date: "4/24/2019"
 output: 
   html_document:
@@ -97,7 +97,7 @@ CitiBike <- readRDS("trip.rds")
 #III. Description of data import / cleaning / transformation
 
 Firstly, we did the data cleaning in R. But we found there are no missing values in our dataset.
-```{r}
+```{r, message = FALSE}
 # check missing values
 CitiBike[!complete.cases(CitiBike),]
 ```
@@ -193,7 +193,7 @@ ggplot(data=UsagePerMonth, aes(x=Month, y=n, group = 1, label=n)) +
   ylim(500000,2100000)+
   geom_point() +
   geom_line() +
-  geom_text(vjust=-1)+
+  geom_text(vjust=-1, size = 3)+
   ylab("Number of trips") +
   xlab("") +
   ggtitle("NYC Monthly Citi Bike Trips") +
