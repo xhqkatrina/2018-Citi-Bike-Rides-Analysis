@@ -11,13 +11,13 @@ Both raw data and tidy data are too large to upload onto Github. Please go to ht
 ## Partial Results of Exploratory Data Analysis
 
 ### How many trips on each Month throughout the year?
-![alt text](https://github.com/xhqkatrina/2018-Citi-Bike-Rides-Analysis/blob/master/data/images/monthly_trip.PNG)
+<img src="https://github.com/xhqkatrina/2018-Citi-Bike-Rides-Analysis/blob/master/data/images/monthly_trip.PNG" width="512">
 
 ### How many trips in each hour of the day?
-![alt text](https://github.com/xhqkatrina/2018-Citi-Bike-Rides-Analysis/blob/master/data/images/hourly_trip.PNG)
+<img src="https://github.com/xhqkatrina/2018-Citi-Bike-Rides-Analysis/blob/master/data/images/hourly_trip.PNG" width="512">
 
 ### Weather impact on bike usage
-![alt text](https://github.com/xhqkatrina/2018-Citi-Bike-Rides-Analysis/blob/master/data/images/weather_impact.PNG)
+<img src="https://github.com/xhqkatrina/2018-Citi-Bike-Rides-Analysis/blob/master/data/images/weather_impact.PNG" width="512">
 
 ## Interactive Component (R Shiny)
 The interactive component allows users to visualize citi bike trip records on the map of New York City. The app presents information related to some of our previous analysis: how many trips there are in each hour, what the most popular stations/routes are etc. Since the dataset includes geographical information, users can get a better view through observing the map. In addition, we give users the option to view hourly map, which allows them to see the dynamic change throughout the day.
